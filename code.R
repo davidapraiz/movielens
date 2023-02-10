@@ -50,7 +50,16 @@ edx <- rbind(edx, removed)
 
 rm(dl, ratings, movies, test_index, temp, movielens, removed)
 
+#for convenience and to save time in the future, save edx and validation as an rda
+save(edx, file="rdas/edx.rda")
+save(validation, file="rdas/validation.rda")
+
+#################
 # Answers to Quiz
+#################
+
+load("rdas/edx.rda")
+load("rdas/validation.rda")
 
 # See size of edx data frame
 dim(edx)
@@ -81,3 +90,68 @@ edx%>%group_by(title)%>%summarize(count=n())%>%arrange(desc(count))%>%head(10)
 
 # Sort ratings from most popular to least. It also clearly shows that integer ratings are more frequent.
 edx%>%group_by(rating)%>%summarize(count=n())%>%arrange(desc(count))
+
+##############
+#Data Analysis
+##############
+
+options(digits=5)
+
+## Predict based on training set mean
+m<-mean(edx$rating)
+m
+
+# useful to create a Root Mean Square Error funtion
+RMSE<-function(true,predicted){
+  sqrt(mean((true-predicted)^2))
+}
+
+
+# RMSE if we use the mean value to predict
+rmse_mean<-RMSE(validation$rating,m)
+rmse_mean
+
+#create a dataframe with the results
+results <- data_frame(method = "Mean", RMSE = as.numeric(rmse_mean))
+
+## Modeling effects per movie
+
+movie<-edx%>%
+  group_by(movieId)%>%
+  summarise(b_mov=mean(rating-m))
+
+predicted_ratings <- validation %>%
+  left_join(movie, by='movieId') %>%
+  mutate(pred=m+b_mov)%>%
+  pull(pred)
+
+# RMSE considering the effect of movies
+rmse_movie<-RMSE(validation$rating,predicted_ratings)
+rmse_movie
+
+# adding the RMSE results, we see an improvement in the RSME
+results<-results%>%
+  add_row(method="Movie effect",RMSE=as.numeric(rmse_movie))
+
+
+## Modeling effects per user
+
+user<- edx %>%
+  left_join(movie, by="movieId") %>%
+  group_by(userId) %>%
+  summarise(b_user = mean(rating - m - b_mov))
+
+predicted_ratings <- validation %>%
+  left_join(movie, by='movieId') %>%
+  left_join(user, by="userId")%>%
+  mutate(pred=m+b_mov+b_user)%>%
+  pull(pred)
+
+# RMSE considering the effect of users
+rmse_user<-RMSE(validation$rating,predicted_ratings)
+rmse_user
+
+# adding the RMSE results, we see an improvement in the RSME
+results<-results%>%
+  add_row(method="User effect",RMSE=as.numeric(rmse_user))
+
